@@ -257,7 +257,9 @@ const App: React.FC = () => {
             userMsg.text, historySnapshot, currentAttachment || undefined, false,
             activeKeyDef?.key, gradioEndpoint, genSettings, visualMemory, language, memories
         );
+        
         if (response.isError) {
+            // Updated: Use the specific text returned by the service
             setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: response.text, isError: true }]);
         } else {
             const mId = Date.now().toString();
@@ -271,7 +273,8 @@ const App: React.FC = () => {
             }
         }
     } catch (e) {
-        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "Signal lost.", isError: true }]);
+        // Updated: Only show "Signal lost" if the catch block itself is hit
+        setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "Critical connection failure. Please refresh.", isError: true }]);
     } finally {
         setIsThinking(false);
     }
@@ -352,7 +355,6 @@ const App: React.FC = () => {
             </label>
             <SettingsSlider label="Likeness Strength" value={genSettings.ipAdapterStrength} min={0} max={1} step={0.05} settingKey="ipAdapterStrength" />
             <SettingsSlider label="Guidance" value={genSettings.guidance} min={1} max={15} step={0.01} settingKey="guidance" />
-            {/* Gradio often requires a minimum of 20 steps for high-quality models like FLUX */}
             <SettingsSlider label="Steps" value={genSettings.steps} min={20} max={50} step={1} settingKey="steps" />
           </div>
         </details>

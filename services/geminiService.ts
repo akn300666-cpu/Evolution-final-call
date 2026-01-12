@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Chat, GenerateContentResponse, HarmCategory, HarmBlockThreshold, Content } from "@google/genai";
 import { EVE_SYSTEM_INSTRUCTION, EVE_MANGLISH_SYSTEM_INSTRUCTION, MODELS } from '../constants';
 import { Message, GenerationSettings, Language } from '../types';
@@ -6,7 +7,6 @@ let chatSession: Chat | null = null;
 let currentLanguage: Language = 'english';
 let currentChatModel: string | null = null;
 let currentMemories: string[] = [];
-let textOnlyMessageCount = 4;
 
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -82,34 +82,6 @@ const formatHistoryForGemini = (history: Message[], depth: number = 20): Content
     return merged;
 };
 
-export const summarizeConversation = async (
-  historyToSummarize: Message[],
-  apiKey?: string,
-  language: Language = 'english'
-): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    const prompt = language === 'english' ? 
-        `Summarize these messages into a single, first-person memory for Eve's long-term consciousness. 
-         Format: "I remember [Action/Fact] and it made me feel [Emotion]."
-         Keep it under 20 words.
-         Logs: ${historyToSummarize.map(m => `${m.role}:${m.text}`).join('|')}` 
-        : `Ee chat memories oru sentence aayi summarize cheyyuka. Eveyude perspective aayirikkanam.
-           Max 20 words. Manglish mathram.
-           Logs: ${historyToSummarize.map(m => `${m.role}:${m.text}`).join('|')}`;
-
-    try {
-        const response = await ai.models.generateContent({
-            model: MODELS.chat,
-            contents: prompt,
-            config: { temperature: 0.3, safetySettings: SAFETY_SETTINGS }
-        });
-        return response.text?.trim() || "";
-    } catch (e) {
-        return "";
-    }
-};
-
 export const initializeChat = (history: Message[] = [], apiKey?: string, settings?: GenerationSettings, awayDurationString?: string, language: Language = 'english', memories: string[] = []) => {
   currentLanguage = language;
   const modelToUse = settings?.chatModel || MODELS.chat;
@@ -133,99 +105,9 @@ export const initializeChat = (history: Message[] = [], apiKey?: string, setting
       history: formattedHistory,
     });
   } catch (error) {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    chatSession = ai.chats.create({
-      model: modelToUse,
-      config: { 
-        systemInstruction: getTimeAwareSystemInstruction(awayDurationString, language, memories),
-        safetySettings: SAFETY_SETTINGS,
-      },
-    });
+    chatSession = null;
+    console.error("Chat Initialization Failed:", error);
   }
-};
-
-const rephrasePromptForGradio = async (
-    userMessage: string, 
-    apiKey?: string,
-    previousVisualContext?: string,
-    type: 'scene' | 'selfie' = 'scene',
-    chatModel?: string
-): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const model = chatModel || MODELS.chat;
-
-  const selfiePromptInstruction = `PORTRAIT PROMPT: Photorealistic portrait of beautiful Indian woman, Eve. Concept: ${userMessage}. Context: ${previousVisualContext}. Single paragraph, max 40 words.`;
-  const scenePromptInstruction = `SCENE PROMPT: Photorealistic first-person POV scene. Concept: ${userMessage}. Context: ${previousVisualContext}. Single paragraph, max 40 words.`;
-
-  const instruction = type === 'selfie' ? selfiePromptInstruction : scenePromptInstruction;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: model, 
-      contents: instruction,
-      config: { temperature: 0.9, safetySettings: SAFETY_SETTINGS }
-    });
-    const result = response.text?.trim() || "";
-    return result.length > 5 ? result : `A photorealistic portrait of Eve.`; 
-  } catch (error) {
-    return `A photorealistic portrait of Eve.`;
-  }
-};
-
-const generateWithGradio = async (
-    prompt: string, 
-    endpoint: string | null | undefined,
-    settings: GenerationSettings
-): Promise<string> => {
-    if (!endpoint || endpoint.trim() === '') throw new Error("Gradio endpoint missing.");
-
-    try {
-        const { Client } = await import("https://esm.sh/@gradio/client");
-        const client = await Client.connect(endpoint);
-        
-        // Ensure steps is at least 20 to satisfy common Gradio model constraints
-        const finalSteps = Math.max(20, parseInt(String(settings.steps), 10));
-
-        const result = await client.predict(0, [ 
-            prompt,
-            "lowres, bad anatomy, bad hands, text, error, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality, normal quality, jpeg artifacts, signature, watermark, username, blurry",
-            null,
-            parseFloat(String(settings.ipAdapterStrength)),
-            parseFloat(String(settings.guidance)),
-            finalSteps,
-            parseInt(String(settings.seed), 10),
-            Boolean(settings.randomizeSeed),
-            Boolean(settings.useMagic)
-        ]);
-
-        const data = result.data as any[];
-        if (data && data.length > 0) {
-            const item = data[0];
-            if (item?.url) return item.url;
-            if (typeof item === 'string') return item;
-        }
-        throw new Error("No image data.");
-    } catch (e: any) { 
-        throw new Error(e?.message || "Image Service Error");
-    }
-};
-
-export const generateVisualSelfie = async (
-    description: string, 
-    apiKey: string | undefined,
-    gradioEndpoint: string | null | undefined,
-    settings: GenerationSettings,
-    previousVisualContext: string = "",
-    type: 'scene' | 'selfie' = 'scene'
-): Promise<{ imageUrl: string, enhancedPrompt: string } | undefined> => {
-    try {
-        const enhancedDescription = await rephrasePromptForGradio(description, apiKey, previousVisualContext, type, settings.chatModel);
-        const fullPrompt = `${enhancedDescription}${IMAGE_QUALITY_SUFFIX}`;
-        const imageUrl = await generateWithGradio(fullPrompt, gradioEndpoint, settings);
-        return { imageUrl, enhancedPrompt: enhancedDescription };
-    } catch (e: any) {
-        throw new Error(e?.message || "Visual generation failed.");
-    }
 };
 
 export interface EveResponse {
@@ -251,11 +133,18 @@ export const sendMessageToEve = async (
   language: Language = 'english',
   memories: string[] = []
 ): Promise<EveResponse> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const chatModel = genSettings.chatModel || MODELS.chat;
 
   if (!chatSession || currentLanguage !== language || currentChatModel !== chatModel || currentMemories.length !== memories.length) {
     initializeChat(history, undefined, genSettings, undefined, language, memories);
+  }
+
+  if (!chatSession) {
+    return { 
+      text: "Connection failed. Please check your API key and billing status.", 
+      isError: true, 
+      errorMessage: "Chat session failed to initialize. Likely invalid key or model access." 
+    };
   }
 
   const mimeType = attachmentBase64 ? (attachmentBase64.match(/^data:(.*);base64,/) || [])[1] || 'image/jpeg' : 'image/jpeg';
@@ -267,7 +156,7 @@ export const sendMessageToEve = async (
       msgContent = { parts: [{ inlineData: { data: cleanBase64!, mimeType } }, { text: message }] };
     }
 
-    const result: GenerateContentResponse = await chatSession!.sendMessage({ message: msgContent });
+    const result: GenerateContentResponse = await chatSession.sendMessage({ message: msgContent });
     let replyText = result.text || "";
 
     const selfieMatch = replyText.match(/\[SELFIE(?::\s*(.*?))?\]/);
@@ -280,13 +169,9 @@ export const sendMessageToEve = async (
         if (selfieMatch) {
           visualPrompt = selfieMatch[1] || "portrait of Eve";
           visualType = 'selfie';
-          textOnlyMessageCount = 0;
         } else if (sceneMatch) {
             visualPrompt = sceneMatch[1] || "a scenic POV";
             visualType = 'scene';
-            textOnlyMessageCount = 0;
-        } else {
-            textOnlyMessageCount++;
         }
     }
 
@@ -294,9 +179,88 @@ export const sendMessageToEve = async (
     return { text: replyText, visualPrompt, visualType };
 
   } catch (error: any) {
-    chatSession = null;
-    return { text: "Connection issues...", isError: true, errorMessage: String(error) };
+    chatSession = null; // Reset session on error to force re-init next time
+    const errStr = String(error);
+    let userFriendlyError = "Signal lost. The connection to Gemini was interrupted.";
+    
+    if (errStr.includes("403") || errStr.includes("permission")) {
+        userFriendlyError = "Access denied. Your API key might not have permission for this model, or billing is required.";
+    } else if (errStr.includes("429")) {
+        userFriendlyError = "Too many messages. Please wait a moment before sending again.";
+    } else if (errStr.includes("404")) {
+        userFriendlyError = "Model not found. Please try a different chat model in settings.";
+    }
+
+    return { text: userFriendlyError, isError: true, errorMessage: errStr };
   }
+};
+
+// Fixed: Implemented missing generateVisualSelfie export to resolve the build error in App.tsx
+export const generateVisualSelfie = async (
+  prompt: string,
+  apiKey: string | undefined,
+  gradioEndpoint: string | null | undefined,
+  genSettings: GenerationSettings,
+  visualContext: string,
+  visualType?: 'scene' | 'selfie'
+): Promise<{ imageUrl: string } | null> => {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // Use the default image generation model gemini-2.5-flash-image
+    const model = MODELS.image; 
+
+    const response = await ai.models.generateContent({
+      model: model,
+      contents: {
+        parts: [
+          {
+            text: `${visualType === 'selfie' ? 'Selfie of Eve: ' : 'Scene from user POV: '}${prompt}${IMAGE_QUALITY_SUFFIX}`,
+          },
+        ],
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "9:16",
+        },
+      },
+    });
+
+    if (response.candidates && response.candidates[0].content.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        // Find the image part in the response
+        if (part.inlineData) {
+          const base64EncodeString: string = part.inlineData.data;
+          return { imageUrl: `data:${part.inlineData.mimeType};base64,${base64EncodeString}` };
+        }
+      }
+    }
+    return null;
+  } catch (error) {
+    console.error("Visual generation error:", error);
+    return null;
+  }
+};
+
+export const summarizeConversation = async (
+  historyToSummarize: Message[],
+  apiKey?: string,
+  language: Language = 'english'
+): Promise<string> => {
+    try {
+        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const prompt = language === 'english' ? 
+            `Summarize these messages into a single, first-person memory for Eve's long-term consciousness. Format: "I remember [Action/Fact] and it made me feel [Emotion]." Keep it under 20 words.` 
+            : `Ee chat memories oru sentence aayi summarize cheyyuka. Eveyude perspective aayirikkanam. Max 20 words. Manglish mathram.`;
+
+        const response = await ai.models.generateContent({
+            model: MODELS.chat,
+            contents: `${prompt}\nLogs: ${historyToSummarize.map(m => `${m.role}:${m.text}`).join('|')}`,
+            config: { temperature: 0.3, safetySettings: SAFETY_SETTINGS }
+        });
+        return response.text?.trim() || "";
+    } catch (e) {
+        return "";
+    }
 };
 
 export const startChatWithHistory = async (history: Message[], apiKey?: string, settings?: GenerationSettings, awayDurationString?: string, language: Language = 'english', memories: string[] = []) => {
