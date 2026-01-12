@@ -122,14 +122,14 @@ Style: The result will be a **9:16 aspect ratio**, photorealistic image.
 `;
 
 export const MODELS = {
-  chat: 'gemini-3-flash-preview',
+  chat: 'gemini-2.5-flash',
   image: 'gemini-2.5-flash-image'
 };
 
 export const AVAILABLE_CHAT_MODELS = [
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', quota: 'Generous' },
-  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro', quota: 'Strict' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', quota: 'Generous' },
+  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash (Billing Required)', quota: 'Strict' },
+  { id: 'gemini-3-pro-preview', name: 'Gemini 3 Pro (Billing Required)', quota: 'Strict' },
   { id: 'gemini-flash-latest', name: 'Gemini Flash 1.5', quota: 'Generous' },
-  { id: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite', quota: 'Best (Lite)' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', quota: 'Generous' }
+  { id: 'gemini-flash-lite-latest', name: 'Gemini Flash Lite', quota: 'Best (Lite)' }
 ];

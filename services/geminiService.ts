@@ -7,6 +7,7 @@ let chatSession: Chat | null = null;
 let currentLanguage: Language = 'english';
 let currentChatModel: string | null = null;
 let currentMemories: string[] = [];
+let lastInitError: string | null = null;
 
 const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -87,9 +88,18 @@ export const initializeChat = (history: Message[] = [], apiKey?: string, setting
   const modelToUse = settings?.chatModel || MODELS.chat;
   currentChatModel = modelToUse;
   currentMemories = memories;
+  lastInitError = null;
   
+  const effectiveKey = apiKey || process.env.API_KEY;
+
+  if (!effectiveKey) {
+      lastInitError = "No API Key provided. Please add one in settings.";
+      chatSession = null;
+      return;
+  }
+
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: effectiveKey });
     const formattedHistory = formatHistoryForGemini(history, settings?.historyDepth);
     const systemInstruction = getTimeAwareSystemInstruction(awayDurationString, language, memories);
 
@@ -104,8 +114,9 @@ export const initializeChat = (history: Message[] = [], apiKey?: string, setting
       },
       history: formattedHistory,
     });
-  } catch (error) {
+  } catch (error: any) {
     chatSession = null;
+    lastInitError = error?.message || "Internal error during chat setup.";
     console.error("Chat Initialization Failed:", error);
   }
 };
@@ -136,14 +147,14 @@ export const sendMessageToEve = async (
   const chatModel = genSettings.chatModel || MODELS.chat;
 
   if (!chatSession || currentLanguage !== language || currentChatModel !== chatModel || currentMemories.length !== memories.length) {
-    initializeChat(history, undefined, genSettings, undefined, language, memories);
+    initializeChat(history, apiKey, genSettings, undefined, language, memories);
   }
 
   if (!chatSession) {
     return { 
-      text: "Connection failed. Please check your API key and billing status.", 
+      text: lastInitError || "Connection failed. Please check your API key and billing status.", 
       isError: true, 
-      errorMessage: "Chat session failed to initialize. Likely invalid key or model access." 
+      errorMessage: lastInitError || "Chat session failed to initialize." 
     };
   }
 
@@ -184,18 +195,19 @@ export const sendMessageToEve = async (
     let userFriendlyError = "Signal lost. The connection to Gemini was interrupted.";
     
     if (errStr.includes("403") || errStr.includes("permission")) {
-        userFriendlyError = "Access denied. Your API key might not have permission for this model, or billing is required.";
+        userFriendlyError = "Access denied. This key might not have permission for this model, or billing is required for this specific model (e.g. Gemini 3). Try switching to Gemini 2.5 Flash.";
     } else if (errStr.includes("429")) {
-        userFriendlyError = "Too many messages. Please wait a moment before sending again.";
+        userFriendlyError = "Too many messages. You've hit the free tier quota. Please wait a moment.";
     } else if (errStr.includes("404")) {
-        userFriendlyError = "Model not found. Please try a different chat model in settings.";
+        userFriendlyError = "Model not found. Please try a different chat model in settings (Gemini 2.5 Flash is recommended).";
+    } else if (errStr.includes("API key")) {
+        userFriendlyError = "Invalid API Key. Please update it in the settings menu.";
     }
 
     return { text: userFriendlyError, isError: true, errorMessage: errStr };
   }
 };
 
-// Fixed: Implemented missing generateVisualSelfie export to resolve the build error in App.tsx
 export const generateVisualSelfie = async (
   prompt: string,
   apiKey: string | undefined,
@@ -204,9 +216,11 @@ export const generateVisualSelfie = async (
   visualContext: string,
   visualType?: 'scene' | 'selfie'
 ): Promise<{ imageUrl: string } | null> => {
+  const effectiveKey = apiKey || process.env.API_KEY;
+  if (!effectiveKey) return null;
+
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    // Use the default image generation model gemini-2.5-flash-image
+    const ai = new GoogleGenAI({ apiKey: effectiveKey });
     const model = MODELS.image; 
 
     const response = await ai.models.generateContent({
@@ -227,7 +241,6 @@ export const generateVisualSelfie = async (
 
     if (response.candidates && response.candidates[0].content.parts) {
       for (const part of response.candidates[0].content.parts) {
-        // Find the image part in the response
         if (part.inlineData) {
           const base64EncodeString: string = part.inlineData.data;
           return { imageUrl: `data:${part.inlineData.mimeType};base64,${base64EncodeString}` };
@@ -246,8 +259,11 @@ export const summarizeConversation = async (
   apiKey?: string,
   language: Language = 'english'
 ): Promise<string> => {
+    const effectiveKey = apiKey || process.env.API_KEY;
+    if (!effectiveKey) return "";
+
     try {
-        const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+        const ai = new GoogleGenAI({ apiKey: effectiveKey });
         const prompt = language === 'english' ? 
             `Summarize these messages into a single, first-person memory for Eve's long-term consciousness. Format: "I remember [Action/Fact] and it made me feel [Emotion]." Keep it under 20 words.` 
             : `Ee chat memories oru sentence aayi summarize cheyyuka. Eveyude perspective aayirikkanam. Max 20 words. Manglish mathram.`;
@@ -264,5 +280,5 @@ export const summarizeConversation = async (
 };
 
 export const startChatWithHistory = async (history: Message[], apiKey?: string, settings?: GenerationSettings, awayDurationString?: string, language: Language = 'english', memories: string[] = []) => {
-  initializeChat(history, undefined, settings, awayDurationString, language, memories);
+  initializeChat(history, apiKey, settings, awayDurationString, language, memories);
 };

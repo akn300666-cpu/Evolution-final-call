@@ -1,3 +1,4 @@
+
 import { Message, ApiKeyDef, GenerationSettings, Language, StoredSession } from '../types';
 
 const DB_NAME = 'EveVaultDB';
@@ -137,14 +138,14 @@ export const loadGradioEndpoint = (): string | null => {
 
 export const GenerationSettingsDefaults: GenerationSettings = {
     guidance: 7.0,
-    steps: 30, // Default to 30
+    steps: 30, 
     ipAdapterStrength: 0.6,
     loraStrength: 0.45,
     seed: 42,
     randomizeSeed: true,
     useMagic: true,
     aiImageGeneration: true,
-    chatModel: 'gemini-3-flash-preview',
+    chatModel: 'gemini-2.5-flash',
     temperature: 1.0,
     topP: 0.95,
     topK: 40,
@@ -152,7 +153,6 @@ export const GenerationSettingsDefaults: GenerationSettings = {
 };
 
 export const saveGenerationSettings = (settings: GenerationSettings) => {
-    // Enforcement: ensure steps is never saved below 20
     const finalSettings = {
         ...settings,
         steps: Math.max(20, settings.steps)
